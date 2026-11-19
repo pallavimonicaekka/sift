@@ -1,0 +1,5 @@
+{
+  "name": "sift",
+  "owner": { "name": "pallavimonicaekka" },
+  "plugins": [{ "name": "sift", "source": "./" }]
+}
