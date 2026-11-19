@@ -166,6 +166,18 @@ test('a chosen music file loops while the panel is open and stops when it closes
   expect(plays).toHaveLength(2)
 })
 
+test('a large panel draws ordinary digits in wider cells, never block shapes', async ($, on) => {
+  await setup($, on)
+  const ui: any = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.resize({ columns: 160, rows: 60, in: 'game' })
+  await ui.advance(1800)
+  const tree = JSON.stringify(await ui.drawn({ in: 'game' }))
+  expect(/[▀▄█]/.test(tree)).toBe(false)
+  // Cells grow with the panel: a 160-column panel gets 7-wide cells.
+  expect(tree).toContain('"width":7')
+  await ui.unmount()
+})
+
 test('a finished file shows its quiet message and the next-file button', async ($, on) => {
   mock.clock(on)
   mock.store(on, { game: { file: 3, seed: 424242, refined: [0, 1, 2, 3, 4, 5, 6, 7] } })

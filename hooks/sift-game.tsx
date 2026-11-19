@@ -79,10 +79,10 @@ const randomLetter = (like: string) => {
 // ---------------------------------------------------------------------------
 
 type Layout = {
-  kind: 'big' | 'roomy' | 'compact' | 'narrow'
+  kind: 'roomy' | 'compact' | 'narrow'
   cellW: number // columns per cell
   rowH: number // lines per grid row
-  glyphH: number // lines the digit itself takes (3 for big digits)
+  glyphH: number // lines the digit itself takes (always 1)
   gridW: number
   gridH: number
   left: number // columns from the region's left edge to the grid
@@ -101,8 +101,11 @@ const BOTTOM_ONE_LINE = 52
 const CHIP_MIN = 18 // a 5-wide moving sample, " Drizzle", " 1", " ●○"
 
 const CANDIDATES: Pick<Layout, 'kind' | 'cellW' | 'rowH' | 'glyphH'>[] = [
-  { kind: 'big', cellW: 5, rowH: 4, glyphH: 3 },
-  { kind: 'big', cellW: 5, rowH: 3, glyphH: 3 },
+  // Every layout draws ordinary digits; a larger panel just gets wider cells
+  // and more space between rows.
+  { kind: 'roomy', cellW: 7, rowH: 3, glyphH: 1 },
+  { kind: 'roomy', cellW: 6, rowH: 3, glyphH: 1 },
+  { kind: 'roomy', cellW: 6, rowH: 2, glyphH: 1 },
   { kind: 'roomy', cellW: 5, rowH: 2, glyphH: 1 },
   { kind: 'roomy', cellW: 4, rowH: 2, glyphH: 1 },
   { kind: 'compact', cellW: 3, rowH: 2, glyphH: 1 },
@@ -116,7 +119,7 @@ function layoutFor(columns: number, rows: number): Layout {
   const sized = (c: (typeof CANDIDATES)[number]): Layout => {
     const gridW = COLS * c.cellW
     const gridH = ROWS * c.rowH - (c.rowH - c.glyphH)
-    const binGap = c.kind === 'big' ? 2 : 1
+    const binGap = c.cellW >= 6 ? 2 : 1
     const fitsFour = Math.floor((gridW - 3 * binGap) / 4) >= CHIP_MIN
     const binsPerRow = fitsFour ? 4 : 2
     const chipW = Math.floor((gridW - (binsPerRow - 1) * binGap) / binsPerRow)
@@ -146,43 +149,6 @@ function cellUnder(l: Layout, x: number, y: number, clamp: boolean) {
   const inside = c >= 0 && c < COLS && r >= 0 && r < ROWS && y - l.gridTop < l.gridH
   if (!inside && !clamp) return null
   return { c: Math.max(0, Math.min(COLS - 1, c)), r: Math.max(0, Math.min(ROWS - 1, r)) }
-}
-
-// ---------------------------------------------------------------------------
-// Big digits: a 3 × 5 pixel font drawn with half blocks, three lines tall.
-// ---------------------------------------------------------------------------
-
-const PIX = [
-  ['###', '#.#', '#.#', '#.#', '###'],
-  ['.#.', '##.', '.#.', '.#.', '###'],
-  ['###', '..#', '###', '#..', '###'],
-  ['###', '..#', '###', '..#', '###'],
-  ['#.#', '#.#', '###', '..#', '..#'],
-  ['###', '#..', '###', '..#', '###'],
-  ['###', '#..', '###', '#.#', '###'],
-  ['###', '..#', '..#', '..#', '..#'],
-  ['###', '#.#', '###', '#.#', '###'],
-  ['###', '#.#', '###', '..#', '###'],
-]
-// The lines of one big digit in a canvas `lines` tall, dropped `drop` pixels.
-function bigGlyph(d: number, lines: number, drop: number): string[] {
-  const px: string[] = Array(lines * 2).fill('...')
-  PIX[d]!.forEach((row, i) => {
-    if (i + drop < px.length) px[i + drop] = row
-  })
-  const out: string[] = []
-  for (let li = 0; li < lines; li++) {
-    const a = px[li * 2]!
-    const b = px[li * 2 + 1]!
-    let s = ''
-    for (let x = 0; x < 3; x++) {
-      const t = a[x] === '#'
-      const u = b[x] === '#'
-      s += t && u ? '█' : t ? '▀' : u ? '▄' : ' '
-    }
-    out.push(s)
-  }
-  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -670,20 +636,6 @@ const SiftGame: ClientModule<JsonValue, State> = (rawProps, surface) => {
   // The lines of one cell, each exactly L.cellW wide.
   const cellLines = (look: Look): string[] => {
     const w = L.cellW
-    if (L.kind === 'big') {
-      const maxDrop = L.rowH * 2 - 5
-      const drop = Math.min(maxDrop, look.drop)
-      const glyph = bigGlyph(look.digit, L.rowH, drop)
-      const padL = Math.max(0, Math.min(w - 3, Math.floor((w - 3) / 2) + look.shiftX))
-      return glyph.map((g, li) => {
-        // Bloom's swell: marks in the side padding, middle line first, then all three.
-        const mark = look.swell === 2 ? (li === 1 ? '•' : li < L.glyphH ? '·' : ' ') : look.swell === 1 && li === 1 ? '·' : ' '
-        const left = padL > 0 ? mark + ' '.repeat(padL - 1) : ''
-        const rightPad = w - 3 - padL
-        const right = rightPad > 0 ? ' '.repeat(rightPad - 1) + mark : ''
-        return left + g + right
-      })
-    }
     const chars = Array.from({ length: L.rowH }, () => Array<string>(w).fill(' '))
     const centre = Math.floor((w - 1) / 2)
     const x = Math.max(0, Math.min(w - 1, centre + look.shiftX))
@@ -731,7 +683,7 @@ const SiftGame: ClientModule<JsonValue, State> = (rawProps, surface) => {
           const inCell = li < L.glyphH
           // Each cell is its own fixed-width Box, so the cell under the pointer is
           // the cell drawn there. A selection tints the whole cell. Only props that
-          // are on are written: the big layout draws ~700 of these, and a drawing
+          // are on are written: a large layout draws hundreds of these, and a drawing
           // must stay under the surface's size limit.
           const boxProps = isSel && inCell ? { width: L.cellW, backgroundColor: 'subtle' } : { width: L.cellW }
           const textProps = {
