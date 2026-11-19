@@ -81,8 +81,8 @@ test('the game draws a file in the panel', async ($, on) => {
   const head = await ui.find({ type: 'Text', text: /File 01/, in: 'game' })
   expect(head).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /Move slowly/, in: 'game' })).toBeTruthy()
-  // Four bins plus Snooze and Turn off.
-  expect(await ui.findAll({ type: 'Button', in: 'game' })).toHaveLength(6)
+  // Four bins plus Mute, Snooze and Turn off.
+  expect(await ui.findAll({ type: 'Button', in: 'game' })).toHaveLength(7)
   // Sorting with nothing selected says so, gently.
   await ui.key({ key: '1', in: 'game' })
   const hint = await ui.find({ type: 'Text', text: /Select restless/, in: 'game' })
@@ -166,6 +166,21 @@ test('a chosen music file loops while the panel is open and stops when it closes
   expect(plays).toHaveLength(2)
 })
 
+test("with no file chosen, Sift plays Uneasy Piano", async ($, on) => {
+  const plays: any[] = []
+  const { clock } = await setup($, on, () => {
+    on('audio.play', (_: unknown, e: any) => {
+      plays.push(e)
+      return { value: undefined }
+    })
+  })
+  await $.turn.start({ text: 'long', turnId: 't7' })
+  await clock.advance(4100)
+  expect(plays).toHaveLength(1)
+  expect(plays[0].clip.asset).toBe('assets/uneasy-piano.m4a')
+  expect(plays[0].shouldLoop).toBe(true)
+})
+
 test('a large panel draws ordinary digits in wider cells, never block shapes', async ($, on) => {
   await setup($, on)
   const ui: any = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -188,8 +203,8 @@ test('a finished file shows its quiet message and the next-file button', async (
   await ui.advance(300)
   expect(await ui.find({ type: 'Text', text: /is sifted\./, in: 'game' })).toBeTruthy()
   expect(await ui.find({ type: 'Button', key: 'next', in: 'game' })).toBeTruthy()
-  // The bins inside the message are not buttons: only next, Snooze and Turn off.
-  expect(await ui.findAll({ type: 'Button', in: 'game' })).toHaveLength(3)
+  // The bins inside the message are not buttons: only next, Mute, Snooze and Turn off.
+  expect(await ui.findAll({ type: 'Button', in: 'game' })).toHaveLength(4)
   await ui.unmount()
 })
 

@@ -18,7 +18,7 @@ const prefs = atom(
   { shape: 'prefs-1' },
 )
 
-const music = atom({ plugin: 'sift', key: 'music' } as const, 'none' as SiftMusic)
+const music = atom({ plugin: 'sift', key: 'music' } as const, 'on' as SiftMusic)
 
 const isGame = (g: unknown): g is SiftGame =>
   typeof g === 'object' &&
@@ -40,12 +40,14 @@ let timer: { cancel: () => void } | undefined
 const SHARE = 0.8
 
 // ---------------------------------------------------------------------------
-// Music: a file the person chose on their own computer (`/sift music <path>`),
-// looped quietly while the panel is open. Only its path is remembered; the
-// file itself is never copied into the plugin, so it is never shared with it.
+// Music: "Uneasy Piano" (made with Suno on a Pro plan by Sift's author, who
+// owns it), shipped in assets/ and looped quietly while the panel is open. A person can
+// swap in a file from their own computer with `/sift music <path>`: only its
+// path is remembered, and that file is never copied into the plugin.
 // ---------------------------------------------------------------------------
 
 const MUSIC_GAIN = 0.35
+const THEME_ASSET = 'assets/uneasy-piano.m4a'
 const MAX_MUSIC_BYTES = 4 * 1024 * 1024 // what one file read can return
 let playing: AbortController | undefined
 
@@ -62,22 +64,25 @@ function stopMusic() {
 async function startMusic($: EngineInterface) {
   if (playing || (await read($, music)) !== 'on') return
   const path = (await $.store.get('musicPath')) as string | undefined
-  if (!path) return
   const controller = new AbortController()
   playing = controller
   try {
+    const options = { shouldLoop: true as const, gain: MUSIC_GAIN, signal: controller.signal }
+    if (!path) {
+      await $.audio.play({ asset: THEME_ASSET }, options)
+      return
+    }
     const { base64 } = (await $.fs.read(path, { as: 'bytes' })) as { base64: string }
     if (controller.signal.aborted) return
-    await $.audio.play({ base64, mime: mimeFor(path) }, { shouldLoop: true, gain: MUSIC_GAIN, signal: controller.signal })
+    await $.audio.play({ base64, mime: mimeFor(path) }, options)
   } catch {
-    $.ui.toast('Sift could not play the music file. Type /sift music <path> to choose another.')
+    $.ui.toast(path ? 'Sift could not play your music file. Type /sift music sift to go back to Sift\'s theme.' : 'Sift could not play its music here.')
   } finally {
     if (playing === controller) playing = undefined
   }
 }
 
 async function setMusicMuted($: EngineInterface, muted: boolean) {
-  if ((await read($, music)) === 'none') return
   await update($, music, () => (muted ? 'muted' : 'on'))
   await $.store.set('musicMuted', muted)
   if (muted) stopMusic()
@@ -125,14 +130,13 @@ export const register: Register = on => {
     }
     const storedGame = await $.store.get('game')
     if (isGame(storedGame)) await update($, game, () => storedGame)
-    const musicPath = await $.store.get('musicPath')
     const musicMuted = (await $.store.get('musicMuted')) === true
-    await update($, music, () => (typeof musicPath === 'string' && musicPath ? (musicMuted ? 'muted' : 'on') : 'none'))
+    await update($, music, () => (musicMuted ? 'muted' : 'on'))
 
     await $.command.register({
       name: 'sift',
-      description: 'Sift: play now, or "on", "off", "snooze", "browser", "music <file>"',
-      argumentHint: '[on | off | snooze | browser | music <file> | music off]',
+      description: 'Sift: play now, or "on", "off", "snooze", "browser", "music"',
+      argumentHint: '[on | off | snooze | browser | music [on | off | sift | <file>]]',
     })
 
     return next(e)
@@ -144,17 +148,17 @@ export const register: Register = on => {
     if (arg === 'music' || arg.startsWith('music ')) {
       // Keep the path's own spelling; strip quotes a pasted path may carry.
       let path = raw.slice(5).trim().replace(/^["']|["']$/g, '')
-      if (path === '' ) {
-        const now = await read($, music)
-        if (now === 'none') return { text: 'No music chosen. Type /sift music followed by the path to an audio file on your computer.' }
-        await setMusicMuted($, now === 'on')
-        return { text: now === 'on' ? 'Sift music is muted.' : 'Sift music is on.' }
+      const word = path.toLowerCase()
+      if (word === '' || word === 'off' || word === 'on') {
+        const muted = word === '' ? (await read($, music)) === 'on' : word === 'off'
+        await setMusicMuted($, muted)
+        return { text: muted ? 'Sift music is muted.' : 'Sift music is on.' }
       }
-      if (path.toLowerCase() === 'off') {
+      if (word === 'sift' || word === 'default') {
         stopMusic()
         await $.store.set('musicPath', '')
-        await update($, music, () => 'none')
-        return { text: 'Sift music is removed. The file itself was not touched.' }
+        await setMusicMuted($, false)
+        return { text: "Sift will play its own theme. Your music file was not touched." }
       }
       if (path.startsWith('~/')) path = `${await $.env.get('HOME')}/${path.slice(2)}`
       if (!(await $.fs.exists(path))) return { text: `Could not find a file at ${path}` }
@@ -162,9 +166,7 @@ export const register: Register = on => {
       if (size > MAX_MUSIC_BYTES) return { text: 'That file is over 4 MB. Choose a shorter clip or a smaller (lower bitrate) file.' }
       stopMusic()
       await $.store.set('musicPath', path)
-      await $.store.set('musicMuted', false)
-      await update($, music, () => 'on')
-      if (isPaneOpen) void startMusic($)
+      await setMusicMuted($, false)
       return { text: 'Sift will play that file quietly while the panel is open. Mute it from the panel, or type /sift music.' }
     }
     if (arg === 'off') {

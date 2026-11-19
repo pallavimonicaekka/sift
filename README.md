@@ -47,10 +47,10 @@ In the Claude desktop app: click **+** next to the prompt box, then **Plugins**,
 | `/sift off` | Stop it opening on its own |
 | `/sift on` | Let it open on its own again |
 | `/sift browser` | Open the full browser version |
-| `/sift music <file>` | Play an audio file from your computer quietly while the panel is open (up to 4 MB) |
-| `/sift music` | Mute or unmute it (there's also a ♪ button in the panel) |
-| `/sift music off` | Stop using a music file |
+| `/sift music` | Mute or unmute the music (there's also a ♪ button in the panel) |
+| `/sift music <file>` | Play your own audio file instead, from your computer (up to 4 MB) |
+| `/sift music sift` | Go back to Sift's own music |
 
-Sift ships with no music. `/sift music` plays a file you already have; only its location is remembered, and the file is never copied into the plugin.
+While the panel is open, Sift quietly loops its own music: "Uneasy Piano", made by Sift's author with Suno. A file you choose with `/sift music <file>` stays on your computer; only its location is remembered.
 
 Sift plays in the Claude Code terminal and the desktop app. Your progress is saved between sessions.
